@@ -2,29 +2,33 @@
 #define MAP
 
 #include <vector>
+#include <random>
 
 #include "Point.hpp"
 #include "Color.hpp"
 #include "Canvas.hpp"
+#include "Graph.hpp"
 
 using namespace std;
 
 class Map {
 public:
-  Map(int virtices_num);
-  void init();
+  Map();
+  void init(Graph &graph);
   void update();
   void draw();
   bool isSteady();
   bool shouldFinish();
 
 protected:
+  int counter;
   Canvas canvas;
+  Graph graph;
   int virtices_num;
   bool steady_flag;
+  default_random_engine engine;
+  uniform_int_distribution<> dist;
 
-  vector<Point> virtices;
-  vector<vector<int>> adjacency;
   vector<int> color;
 
   vector<Color> palette = {
