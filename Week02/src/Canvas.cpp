@@ -3,6 +3,8 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
 
 using namespace std;
 
@@ -54,10 +56,9 @@ void Canvas::init() {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
-  glViewport(0, 0, width, height);
-
   glClearColor(1.0f, 1.0f, 1.0f, 0.0f);
   glLineWidth(5);
+  update();
 }
 
 void Canvas::draw_circle(Point &p, Color &c) {
@@ -131,3 +132,40 @@ void Canvas::update() {
   int side = min(width, height);
   glViewport((width - side) / 2, (height - side) / 2, side, side);
 };
+
+void Canvas::save(string filename) {
+  const unsigned int channnelNum = 3; // RGBなら3, RGBAなら4
+  void* dataBuffer = NULL;
+  dataBuffer = ( GLubyte* )malloc( width * height * channnelNum);
+
+  // 読み取るOpneGLのバッファを指定 GL_FRONT:フロントバッファ　GL_BACK:バックバッファ
+  glReadBuffer( GL_FRONT );
+
+  // OpenGLで画面に描画されている内容をバッファに格納
+  glReadPixels(
+	0,                 //読み取る領域の左下隅のx座標
+	0,                 //読み取る領域の左下隅のy座標 //0 or getCurrentWidth() - 1
+	width,             //読み取る領域の幅
+	height,            //読み取る領域の高さ
+	GL_BGR, //it means GL_BGR,           //取得したい色情報の形式
+	GL_UNSIGNED_BYTE,  //読み取ったデータを保存する配列の型
+	dataBuffer      //ビットマップのピクセルデータ（実際にはバイト配列）へのポインタ
+	);
+
+  GLubyte* p = static_cast<GLubyte*>( dataBuffer );
+  // std::string fname = "outputImage.jpg";
+  IplImage* outImage = cvCreateImage(cvSize( width, height), IPL_DEPTH_8U, 3 );
+
+  for (int j = 0; j < height; ++ j)
+  {
+    for (int i = 0; i < width; ++i)
+    {
+      outImage->imageData[ ( height - j - 1 ) * outImage->widthStep + i * 3 + 0 ] = *p;
+      outImage->imageData[ ( height - j - 1 ) * outImage->widthStep + i * 3 + 1 ] = *( p + 1 );
+      outImage->imageData[ ( height - j - 1 ) * outImage->widthStep + i * 3 + 2 ] = *( p + 2 );
+      p += 3;
+    }
+  }
+
+  cvSaveImage( filename.c_str(), outImage );
+}

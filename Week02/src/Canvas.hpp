@@ -1,6 +1,7 @@
 #ifndef CANVAS
 #define CANVAS
 
+#include <string>
 #include <vector>
 #include <GLFW/glfw3.h>
 #include "Point.hpp"
@@ -22,6 +23,7 @@ public:
   void poll_events();
   void wait_events();
   void update();
+  void save(string name);
 
 protected:
   int width = 640;
