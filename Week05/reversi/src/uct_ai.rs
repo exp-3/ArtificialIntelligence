@@ -4,26 +4,17 @@ use rand::Rng;
 use ai::*;
 use reversi::*;
 
-enum Judge {
-    Color(Color),
-    Even
-}
-
 struct Node {
     ucb: f64,
     playout_num: u64,
     win_num: f64,
-    childs: Vec<(Command, Node)>
+    childs: Vec<(Command, Node)>,
 }
 
 impl Board {
     fn playout(&mut self) -> Judge {
         if self.is_game_over() {
-            let black = self.count_disc(Attr::Color(Color::Black));
-            let white = self.count_disc(Attr::Color(Color::White));
-            if black == white { Judge::Even }
-            else if black > white { Judge::Color(Color::Black) }
-            else { Judge::Color(Color::White) }
+            self.get_judge()
         }
         else {
             if self.get_movable_pos().is_empty() { self.pass(); }
@@ -40,10 +31,9 @@ impl Board {
 }
 
 impl Node {
-    fn new() -> Node {
-        let node = Node{ucb: 0.0, playout_num: 0,
-                        win_num: 0.0, childs: vec![]};
-        node
+    fn new() -> Self {
+        Node{ucb: 0.0, playout_num: 0,
+             win_num: 0.0, childs: vec![]}
     }
 
     fn extract(board: &mut Board, uct_ai: &UCTAI) -> Vec<(Command, Node)> {
@@ -62,15 +52,15 @@ impl Node {
                     }
                 }
             }
-
-            for element in &mut vec {
-                let _ = match element.0 {
+            for child in &mut vec {
+                let _ = match child.0 {
                     Command::Pass => board.pass(),
                     Command::Move(ref p) => board.put(p)
                 };
-                element.1.playout(board, uct_ai);
+                child.1.playout(board, uct_ai);
                 board.undo();
             }
+
         }
 
         vec
@@ -100,6 +90,10 @@ impl Node {
             };
             self.playout_num += 1;
         }
+    }
+
+    fn back_propagation(&mut self, judge: Judge) {
+
     }
 
     fn update_ucb(&mut self, uct_ai: &UCTAI) {
@@ -138,8 +132,7 @@ impl AI for UCTAI {
         let mut root = Node::new();
 
         root.childs.append(&mut Node::extract(board, self));
-        for i in 0 .. self.trial_num {
-            let _ = i;
+        while self.total_playout_num < self.trial_num {
             root.playout(board, self);
             self.total_playout_num += 1;
             root.update_ucb(self);
