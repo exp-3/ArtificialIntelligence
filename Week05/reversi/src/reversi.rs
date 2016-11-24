@@ -34,6 +34,11 @@ pub enum Command {
     Move(Point)
 }
 
+pub enum Judge {
+    Color(Color),
+    Even
+}
+
 #[derive(PartialEq, Copy, Clone)]
 enum Directions {
     Upper,
@@ -75,6 +80,11 @@ impl Board {
     }
 
     pub fn init(&mut self) {
+        for i in 1 .. BOARD_SIZE + 1 {
+            for j in 1 .. BOARD_SIZE + 1 {
+                self.raw_board[i][j] = Attr::Empty;
+            }
+        }
         for i in 0 .. BOARD_SIZE + 2 {
             self.raw_board[0][i] = Attr::Wall;
             self.raw_board[BOARD_SIZE + 1][i] = Attr::Wall;
@@ -159,6 +169,7 @@ impl Board {
             Color::Black => "● 黒番",
             Color::White => "○ 白番"
         });
+        println!("黒: {}石\n白: {}石", self.discs_black, self.discs_white);
         println!("");
         println!("   a b c d e f g h");
         for i in 1 .. BOARD_SIZE + 1 {
@@ -247,6 +258,12 @@ impl Board {
             }
             game_over_flag
         }
+    }
+
+    pub fn get_judge(&self) -> Judge {
+        if self.discs_black == self.discs_white { Judge::Even }
+        else if self.discs_black > self.discs_white { Judge::Color(Color::Black) }
+        else { Judge::Color(Color::White) }
     }
 
     pub fn get_color(&self, point: &Point) -> &Attr {
