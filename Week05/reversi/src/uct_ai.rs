@@ -1,15 +1,11 @@
 // This is reversi AI with UCT algorythm
 use rand;
 use rand::Rng;
+use std::rc::Rc;
+use std::rc::Weak;
+use std::cell::{BorrowState, RefCell};
 use ai::*;
 use reversi::*;
-
-struct Node {
-    ucb: f64,
-    playout_num: u64,
-    win_num: f64,
-    childs: Vec<(Command, Node)>,
-}
 
 impl Board {
     fn playout(&mut self) -> Judge {
@@ -20,6 +16,7 @@ impl Board {
             if self.get_movable_pos().is_empty() { self.pass(); }
             else {
                 let idx = rand::thread_rng().gen_range(0, self.get_movable_pos().len()) as usize;
+                // println!("{}", idx);
                 let p = self.get_movable_pos()[idx];
                 self.put(&p);
             }
@@ -30,120 +27,150 @@ impl Board {
     }
 }
 
+struct Node {
+    ucb: RefCell<f64>,
+    playout_num: RefCell<u64>,
+    win_num: RefCell<f64>,
+    current_color: Color,
+    myself: RefCell<Weak<Node>>,
+    childs: RefCell<Vec<(Command, Rc<Node>)>>,
+    parent: Option<Weak<Node>>
+}
+
 impl Node {
-    fn new() -> Self {
-        Node{ucb: 0.0, playout_num: 0,
-             win_num: 0.0, childs: vec![]}
+    fn new_rc(current_color: Color, parent: Option<Weak<Node>>) -> Rc<Node> {
+        let mut node = Node{ucb: RefCell::new(0.0),
+            playout_num: RefCell::new(0),
+            win_num: RefCell::new(0.0),
+            current_color: current_color,
+            myself: RefCell::default(), childs: RefCell::new(vec![]), parent: parent};
+
+        let rc = Rc::new(node);
+        *rc.myself.borrow_mut() = Rc::downgrade(&rc);
+        rc
     }
 
-    fn extract(board: &mut Board, uct_ai: &UCTAI) -> Vec<(Command, Node)> {
+    fn extract(&self, board: &mut Board, uct_ai: &UCTAI) -> Vec<(Command, Rc<Node>)> {
         let mut vec = Vec::new();
         if !board.is_game_over() {
-            {
-                let movable = board.get_movable_pos();
-                if movable.is_empty() {
-                    let node = Node::new();
-                    vec.push((Command::Pass, node));
-                } else {
-                    for m in movable {
-                        let command = Command::Move(*m);
-                        let node = Node::new();
-                        vec.push((command, node));
-                    }
+            if board.get_movable_pos().is_empty() {
+                let node = Node::new_rc(board.get_current_color(), Some(self.myself.borrow().clone()));
+                vec.push((Command::Pass, node));
+            } else {
+                for m in board.get_movable_pos() {
+                    let command = Command::Move(*m);
+                    let node = Node::new_rc(board.get_current_color(), Some(self.myself.borrow().clone()));
+                    vec.push((command, node));
                 }
             }
-            for child in &mut vec {
-                let _ = match child.0 {
-                    Command::Pass => board.pass(),
-                    Command::Move(ref p) => board.put(p)
-                };
-                child.1.playout(board, uct_ai);
-                board.undo();
-            }
-
         }
 
         vec
     }
 
-    fn playout(&mut self, board: &mut Board, uct_ai: &UCTAI) {
-        if self.childs.is_empty() && self.playout_num > uct_ai.extract_threshold && !board.is_game_over() {
-            self.childs.append(&mut Node::extract(board, uct_ai));
+    fn back_propagation(&self, result: Judge) {
+        *self.win_num.borrow_mut() += match result {
+            Judge::Even => 0.5,
+            Judge::Color(c) if c == self.current_color => 1.0,
+            _ => 0.0
+        };
+        *self.playout_num.borrow_mut() += 1;
+
+        if let Some(ref parent) = self.parent {
+            parent.upgrade().unwrap().back_propagation(result);
         }
-        if !self.childs.is_empty() {
-            self.childs.sort_by(|a, b| a.1.ucb.partial_cmp(&b.1.ucb).unwrap());
-            let next_move = self.childs.last_mut().unwrap();
+    }
+
+    fn playout(&self, board: &mut Board, uct_ai: &UCTAI) {
+        if self.childs.borrow().is_empty() {
+            if *self.playout_num.borrow() < uct_ai.extract_threshold || board.is_game_over() {
+                let result = board.playout();
+                self.back_propagation(result);
+            }
+            else {
+                {
+                    let mut childs = self.extract(board, uct_ai);
+                    self.childs.borrow_mut().append(&mut childs);
+                }
+                for child in self.childs.borrow().iter() {
+                    match child.0 {
+                        Command::Pass => board.pass(),
+                        Command::Move(ref p) => board.put(p)
+                    };
+                    child.1.playout(board, uct_ai);
+                    board.undo();
+                }
+            }
+        }
+        else {
+            let ref childs = *self.childs.borrow();
+            let next_move = childs.iter()
+                .fold(childs.first().unwrap(),
+                      |max_element, i| if *max_element.1.ucb.borrow() < *i.1.ucb.borrow() {
+                          i
+                      } else {max_element});
 
             match next_move.0 {
-                Command::Move(ref p) => board.put(p),
-                Command::Pass => board.pass()
+              Command::Move(ref p) => board.put(p),
+              Command::Pass => board.pass()
             };
 
             next_move.1.playout(board, uct_ai);
             board.undo();
-        } else {
-            let result = board.playout();
-            self.win_num += match result {
-                Judge::Even => 0.5,
-                Judge::Color(c) if c == *board.get_current_color() => 1.0,
-                _ => 0.0
-            };
-            self.playout_num += 1;
         }
     }
 
-    fn back_propagation(&mut self, judge: Judge) {
-
-    }
-
-    fn update_ucb(&mut self, uct_ai: &UCTAI) {
-        if !self.childs.is_empty() {
-            self.playout_num = 0;
-            self.win_num = 0.0;
-            for &mut (_, ref mut child_node) in &mut self.childs {
-                child_node.update_ucb(uct_ai);
-                self.playout_num += child_node.playout_num;
-                self.win_num += child_node.playout_num as f64 - child_node.win_num;
+    fn update_ucb(&self, total_playout_num: u64, uct_ai: &UCTAI) {
+        if !self.childs.borrow().is_empty() {
+            for &(_, ref child_node) in self.childs.borrow().iter() {
+                child_node.update_ucb(total_playout_num, uct_ai);
             }
         }
 
-        self.ucb = self.win_num / self.playout_num as f64
-                    + uct_ai.c * (2.0 * (uct_ai.total_playout_num as f64).ln() / self.playout_num as f64).sqrt();
+        *self.ucb.borrow_mut() = *self.win_num.borrow() / *self.playout_num.borrow() as f64
+            + uct_ai.c * (2.0 * (total_playout_num as f64).ln()
+            / *self.playout_num.borrow() as f64).sqrt();
     }
 }
 
 pub struct UCTAI {
     c: f64,
-    total_playout_num: u64,
     trial_num: u64,
     extract_threshold: u64
 }
 
 impl UCTAI {
     pub fn new(c: f64, trial_num: u64, extract_threshold: u64) -> Self {
-        let uct_ai = UCTAI {c: c, total_playout_num: 0,
-                            trial_num: trial_num, extract_threshold: extract_threshold};
+        let uct_ai = UCTAI {c: c, trial_num: trial_num, extract_threshold: extract_threshold};
         uct_ai
     }
 }
 
 impl AI for UCTAI {
     fn consider(&mut self, board: &mut Board) -> Command {
-        let mut root = Node::new();
+        let root = Node::new_rc(board.get_current_color().inverse(), None);
 
-        root.childs.append(&mut Node::extract(board, self));
-        while self.total_playout_num < self.trial_num {
-            root.playout(board, self);
-            self.total_playout_num += 1;
-            root.update_ucb(self);
+        root.childs.borrow_mut().append(&mut root.extract(board, self));
+        for child in root.childs.borrow().iter() {
+            match child.0 {
+                Command::Pass => board.pass(),
+                Command::Move(ref p) => board.put(p)
+            };
+            child.1.playout(board, self);
+            board.undo();
         }
 
-        let next_move = root.childs.iter()
-            .fold(root.childs.first().unwrap(),
-                  |max_element, i| if max_element.1.ucb < i.1.ucb {
-                      i
-                  } else {max_element});
-
+        while *root.playout_num.borrow() < self.trial_num {
+            root.playout(board, self);
+            root.update_ucb(*root.playout_num.borrow(), self);
+        }
+        let ref childs = *root.childs.borrow();
+        let next_move = childs.iter()
+            .fold(childs.first().unwrap(),
+                  |max_element, i| {
+                      if *max_element.1.ucb.borrow() < *i.1.ucb.borrow() { i }
+                      else { max_element }
+                  });
         next_move.0
     }
 }

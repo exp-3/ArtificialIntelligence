@@ -20,6 +20,12 @@ pub struct PMCAI {
     trial_num: u64
 }
 
+impl PMCAI {
+    pub fn new(trial_num: u64) -> Self {
+        PMCAI{total_playout_num: 0, trial_num: trial_num}
+    }
+}
+
 impl Board {
     fn playout(&mut self) -> Judge {
         if self.is_game_over() {
@@ -39,14 +45,9 @@ impl Board {
     }
 }
 
-impl PMCAI {
-    pub fn new(trial_num: u64) -> Self {
-        PMCAI{total_playout_num: 0, trial_num: trial_num}
-    }
-}
-
 impl AI for PMCAI {
     fn consider(&mut self, board: &mut Board) -> Command {
+        self.total_playout_num = 0;
         if board.get_movable_pos().is_empty() {
             Command::Pass
         }
@@ -57,7 +58,7 @@ impl AI for PMCAI {
             'outer: loop {
                 for &mut (ref point, ref mut node) in &mut sets {
                     if self.total_playout_num >= self.trial_num { break 'outer; }
-                    let current_color = *board.get_current_color();
+                    let current_color = board.get_current_color();
                     board.put(point);
                     match board.playout() {
                         Judge::Even => node.win_num += 0.5,
