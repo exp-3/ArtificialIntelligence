@@ -1,4 +1,6 @@
-use std::ops::Index;
+// use std::ops::Index;
+use rand;
+use rand::Rng;
 
 const BOARD_SIZE: usize = 8;
 const MAX_TURNS: usize = 60;
@@ -13,6 +15,15 @@ pub struct Point {
 pub enum Color {
     Black,
     White
+}
+
+impl Color {
+    pub fn inverse(&self) -> Color {
+        match *self {
+            Color::Black => Color::White,
+            Color::White => Color::Black
+        }
+    }
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -163,6 +174,23 @@ impl Board {
         };
     }
 
+    // pub fn playout(&mut self) -> Judge {
+    //     if self.is_game_over() {
+    //         self.get_judge()
+    //     }
+    //     else {
+    //         if self.get_movable_pos().is_empty() { self.pass(); }
+    //         else {
+    //             let idx = rand::thread_rng().gen_range(0, self.get_movable_pos().len()) as usize;
+    //             let p = self.get_movable_pos()[idx];
+    //             self.put(&p);
+    //         }
+    //         let judge = self.playout();
+    //         self.undo();
+    //         judge
+    //     }
+    // }
+
     pub fn print(&self) {
         println!("-------------------------");
         println!("現在の手番: {}", match self.current_color {
@@ -281,8 +309,8 @@ impl Board {
         }
     }
 
-    pub fn get_current_color(&self) -> &Color {
-        &self.current_color
+    pub fn get_current_color(&self) -> Color {
+        self.current_color
     }
 
     pub fn get_diff(&self) -> Option<&Vec<Disc>> {
